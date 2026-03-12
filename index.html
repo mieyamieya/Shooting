@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cosmic Defender</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&family=Inter:wght@300;400;600&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div id="game-container">
+        <div id="ui-overlay">
+            <div class="score-container">SCORE: <span id="score-value">0</span></div>
+        </div>
+        <canvas id="gameCanvas"></canvas>
+        <div id="screen-center">
+            <div id="start-screen" class="overlay-screen">
+                <h1>COSMIC DEFENDER</h1>
+                <p>Press SPACE to Start</p>
+                <div class="controls">
+                    <span>Arrows to Move</span>
+                    <span>Space to Shoot</span>
+                </div>
+            </div>
+            <div id="game-over-screen" class="overlay-screen hidden">
+                <h1>GAME OVER</h1>
+                <p>Final Score: <span id="final-score">0</span></p>
+                <button id="restart-btn">Try Again</button>
+            </div>
+        </div>
+    </div>
+    <script src="game.js"></script>
+</body>
+</html>
