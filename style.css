@@ -41,8 +41,25 @@ canvas {
     position: absolute;
     top: 20px;
     left: 20px;
+    right: 20px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
     z-index: 10;
     pointer-events: none;
+}
+
+#lives-container {
+    display: flex;
+    gap: 10px;
+}
+
+.life-icon {
+    width: 20px;
+    height: 15px;
+    background-color: var(--primary-color);
+    clip-path: polygon(50% 0%, 0% 100%, 100% 100%);
+    filter: drop-shadow(0 0 5px var(--primary-color));
 }
 
 .score-container {

@@ -1,6 +1,7 @@
 const canvas = document.getElementById('gameCanvas');
 const ctx = canvas.getContext('2d');
 const scoreElement = document.getElementById('score-value');
+const livesContainer = document.getElementById('lives-container');
 const finalScoreElement = document.getElementById('final-score');
 const startScreen = document.getElementById('start-screen');
 const gameOverScreen = document.getElementById('game-over-screen');
@@ -12,9 +13,17 @@ canvas.height = 800;
 
 // ゲーム状態
 let score = 0;
+let lives = 3;
+let nextExtraLifeScore = 30000;
 let isGameOver = false;
 let isGameStarted = false;
 let animationId;
+
+// UFOタイマー関連
+let lastUfoTime = 0;
+const ufoInterval = 30000; // 30秒
+let ufoDirection = 1; // 1: 左から、-1: 右から
+let activeUfo = null;
 
 // オーディオ管理
 class AudioController {
@@ -56,6 +65,37 @@ class AudioController {
 
         osc.start();
         osc.stop(this.ctx.currentTime + 0.3);
+    }
+
+    startUfoSound() {
+        if (this.ufoOsc) return;
+        this.ufoOsc = this.ctx.createOscillator();
+        this.ufoGain = this.ctx.createGain();
+
+        this.ufoOsc.type = 'square';
+        // ピコピコ音を作るためのLFO的な周波数変調
+        const now = this.ctx.currentTime;
+        for (let i = 0; i < 100; i++) {
+            this.ufoOsc.frequency.setValueAtTime(800, now + i * 0.1);
+            this.ufoOsc.frequency.setValueAtTime(1200, now + i * 0.1 + 0.05);
+        }
+
+        this.ufoGain.gain.setValueAtTime(0.05, now);
+        
+        this.ufoOsc.connect(this.ufoGain);
+        this.ufoGain.connect(this.ctx.destination);
+        
+        this.ufoOsc.start();
+    }
+
+    stopUfoSound() {
+        if (this.ufoOsc) {
+            this.ufoOsc.stop();
+            this.ufoOsc.disconnect();
+            this.ufoGain.disconnect();
+            this.ufoOsc = null;
+            this.ufoGain = null;
+        }
     }
 }
 
@@ -181,11 +221,57 @@ class Enemy {
     }
 }
 
+class Ufo {
+    constructor(direction) {
+        this.width = 50;
+        this.height = 20;
+        this.direction = direction; // 1 for left-to-right, -1 for right-to-left
+        this.y = 50;
+        this.speed = 3;
+        this.color = '#ff0000';
+        
+        if (this.direction === 1) {
+            this.x = -this.width;
+        } else {
+            this.x = canvas.width;
+        }
+    }
+
+    draw() {
+        ctx.save();
+        ctx.shadowBlur = 15;
+        ctx.shadowColor = this.color;
+        
+        ctx.fillStyle = this.color;
+        // UFOっぽい形（楕円形）
+        ctx.beginPath();
+        ctx.ellipse(this.x + this.width / 2, this.y + this.height / 2, this.width / 2, this.height / 2, 0, 0, Math.PI * 2);
+        ctx.fill();
+        
+        // 窓のようなパーツ
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(this.x + 15, this.y + 5, 5, 5);
+        ctx.fillRect(this.x + 30, this.y + 5, 5, 5);
+        
+        ctx.restore();
+    }
+
+    update() {
+        this.x += this.direction * this.speed;
+    }
+
+    isOffScreen() {
+        return (this.direction === 1 && this.x > canvas.width) || (this.direction === -1 && this.x < -this.width);
+    }
+}
+
 // 初期化
 const player = new Player();
 const bullets = [];
 const enemies = [];
 const particles = [];
+
+// UFO関連（上部で定義済みのため削除）
 
 function createExplosion(x, y, color) {
     for (let i = 0; i < 15; i++) {
@@ -227,15 +313,74 @@ function updateEnemies() {
         enemies.forEach(enemy => {
             enemy.y += 20;
             if (enemy.y + enemy.height >= player.y) {
-                gameOver();
+                loseLife();
             }
         });
     }
 }
 
+function updateUfo() {
+    const now = Date.now();
+    
+    // UFOが出現していない時かつ時間が経過した時
+    if (!activeUfo && now - lastUfoTime > ufoInterval) {
+        activeUfo = new Ufo(ufoDirection);
+        ufoDirection *= -1; // 次回のために方向を反転
+        lastUfoTime = now;
+        audio.startUfoSound();
+    }
+
+    if (activeUfo) {
+        activeUfo.update();
+        if (activeUfo.isOffScreen()) {
+            activeUfo = null;
+            audio.stopUfoSound();
+        }
+    }
+}
+
+function loseLife() {
+    lives--;
+    updateLivesUI();
+    
+    if (lives <= 0) {
+        gameOver();
+    } else {
+        // 敵を少し押し戻すか、リセットするか
+        // 今回はシンプルに敵を少し上に押し戻し、一時停止なしで継続
+        enemies.forEach(enemy => {
+            enemy.y -= 100;
+        });
+        createExplosion(player.x + player.width / 2, player.y + player.height / 2, player.color);
+        audio.playExplosion();
+    }
+}
+
 initEnemies();
 
+function updateUI() {
+    scoreElement.textContent = score;
+    
+    // エクステンド処理
+    if (score >= nextExtraLifeScore) {
+        lives++;
+        nextExtraLifeScore += 30000;
+        updateLivesUI();
+        // エクステンド音（任意で追加可能だが、一旦爆発音を代用または無音）
+    }
+}
+
+function updateLivesUI() {
+    livesContainer.innerHTML = '';
+    for (let i = 0; i < lives; i++) {
+        const life = document.createElement('div');
+        life.className = 'life-icon';
+        livesContainer.appendChild(life);
+    }
+}
+
 function checkCollisions() {
+    // 弾とインベーダーの判定
     for (let i = bullets.length - 1; i >= 0; i--) {
         for (let j = enemies.length - 1; j >= 0; j--) {
             const b = bullets[i];
@@ -252,7 +397,29 @@ function checkCollisions() {
                 bullets.splice(i, 1);
                 enemies.splice(j, 1);
                 score += 100;
-                scoreElement.textContent = score;
+                updateUI();
+                break;
+            }
+        }
+    }
+
+    // 弾とUFOの判定
+    if (activeUfo) {
+        for (let i = bullets.length - 1; i >= 0; i--) {
+            const b = bullets[i];
+            if (
+                b.x > activeUfo.x &&
+                b.x < activeUfo.x + activeUfo.width &&
+                b.y > activeUfo.y &&
+                b.y < activeUfo.y + activeUfo.height
+            ) {
+                createExplosion(activeUfo.x + activeUfo.width / 2, activeUfo.y + activeUfo.height / 2, activeUfo.color);
+                audio.playExplosion();
+                audio.stopUfoSound();
+                bullets.splice(i, 1);
+                activeUfo = null;
+                score += 1000;
+                updateUI();
                 break;
             }
         }
@@ -288,6 +455,7 @@ function gameLoop() {
     player.update();
     updateBullets();
     updateEnemies();
+    updateUfo();
     updateParticles();
     checkCollisions();
     
@@ -295,6 +463,7 @@ function gameLoop() {
     player.draw();
     bullets.forEach(b => b.draw());
     enemies.forEach(e => e.draw());
+    if (activeUfo) activeUfo.draw();
     particles.forEach(p => p.draw());
     
     animationId = requestAnimationFrame(gameLoop);
@@ -361,12 +530,15 @@ window.addEventListener('keyup', (e) => {
 function startGame() {
     isGameStarted = true;
     startScreen.classList.add('hidden');
+    updateLivesUI();
+    lastUfoTime = Date.now(); // 開始時からカウント
     gameLoop();
 }
 
 function gameOver() {
     isGameOver = true;
     cancelAnimationFrame(animationId);
+    audio.stopUfoSound(); // ゲームオーバー時にUFO音が鳴り続けないように
     finalScoreElement.textContent = score;
     gameOverScreen.classList.remove('hidden');
 }
